@@ -1,0 +1,968 @@
+<title>Safelight</title>
+<style>
+  :root {
+    --bg: #14100f;
+    --surface: #1c1613;
+    --surface-2: #241c18;
+    --surface-3: #2d2420;
+    --border: #3d312b;
+    --border-soft: #2a221d;
+    --text: #f2e9e0;
+    --text-dim: #ab9a8d;
+    --text-faint: #6f6259;
+    --accent: #ff4d2e;
+    --accent-soft: #52190f;
+    --accent-2: #ffb545;
+    --radius: 3px;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+    --sans: ui-sans-serif, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    min-height: 100vh;
+    background-image:
+      radial-gradient(ellipse at 20% -10%, rgba(255, 77, 46, 0.10), transparent 55%),
+      radial-gradient(ellipse at 100% 110%, rgba(255, 181, 69, 0.06), transparent 50%);
+    background-attachment: fixed;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent-2);
+    outline-offset: 2px;
+  }
+
+  button { font: inherit; color: inherit; }
+
+  .app {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---------- header ---------- */
+  .app-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.1rem 1.5rem;
+    border-bottom: 1px solid var(--border-soft);
+    flex-wrap: wrap;
+  }
+
+  .wordmark {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+  }
+
+  .wordmark .dot {
+    width: 0.55em;
+    height: 0.55em;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px 1px rgba(255, 77, 46, 0.7);
+    display: inline-block;
+    transform: translateY(-0.05em);
+  }
+
+  .wordmark h1 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .wordmark .tagline {
+    color: var(--text-faint);
+    font-size: 0.8rem;
+    font-weight: 400;
+  }
+
+  .header-meta {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  /* ---------- main layout ---------- */
+  .app-main {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+
+  .stage {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2.5rem;
+    min-height: min(62vh, 460px);
+    overflow: hidden;
+  }
+
+  .stage::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border-soft) 1px, transparent 1px);
+    background-size: 28px 28px;
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  /* ---------- dropzone ---------- */
+  .dropzone {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 480px);
+    padding: 3rem 2rem;
+    border: 1.5px dashed var(--border);
+    border-radius: 6px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    background: rgba(28, 22, 19, 0.5);
+  }
+
+  .dropzone:hover,
+  .dropzone.drag-over {
+    border-color: var(--accent);
+    background: rgba(255, 77, 46, 0.06);
+  }
+
+  .dropzone svg { color: var(--text-faint); margin-bottom: 0.75rem; }
+  .dropzone.drag-over svg { color: var(--accent); }
+
+  .dropzone p {
+    margin: 0.2rem 0;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+
+  .dropzone .hint {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    color: var(--text-faint);
+    margin-top: 0.6rem;
+  }
+
+  .dropzone strong { color: var(--text); }
+
+  /* ---------- canvas + crop overlay ---------- */
+  .canvas-wrap {
+    position: relative;
+    z-index: 1;
+    display: none;
+    box-shadow: 0 0 0 1px var(--border-soft), 0 20px 50px -20px rgba(0, 0, 0, 0.6);
+  }
+
+  .canvas-wrap canvas#viewCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .dim {
+    position: absolute;
+    background: rgba(10, 8, 7, 0.72);
+    pointer-events: none;
+  }
+
+  .crop-box {
+    position: absolute;
+    cursor: move;
+    touch-action: none;
+  }
+
+  .crop-box .ants {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .crop-box .ants rect {
+    fill: none;
+    stroke: var(--accent-2);
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+    animation: march 0.6s linear infinite;
+  }
+
+  @keyframes march {
+    to { stroke-dashoffset: -18; }
+  }
+
+  .third-lines {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.45;
+  }
+
+  .third-lines span {
+    position: absolute;
+    background: var(--accent-2);
+    opacity: 0.5;
+  }
+
+  .third-lines .v1 { left: 33.333%; top: 0; width: 1px; height: 100%; }
+  .third-lines .v2 { left: 66.666%; top: 0; width: 1px; height: 100%; }
+  .third-lines .h1 { top: 33.333%; left: 0; height: 1px; width: 100%; }
+  .third-lines .h2 { top: 66.666%; left: 0; height: 1px; width: 100%; }
+
+  .handle {
+    position: absolute;
+    width: 13px;
+    height: 13px;
+    background: var(--bg);
+    border: 1.5px solid var(--accent-2);
+    border-radius: 1px;
+    transform: translate(-50%, -50%);
+  }
+
+  .handle.edge { background: transparent; border: none; }
+  .handle.edge::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    background: var(--accent-2);
+  }
+  .handle[data-h="n"], .handle[data-h="s"] { width: 26px; height: 9px; cursor: ns-resize; }
+  .handle[data-h="e"], .handle[data-h="w"] { width: 9px; height: 26px; cursor: ew-resize; }
+  .handle[data-h="n"].edge::after, .handle[data-h="s"].edge::after { width: 16px; height: 2px; }
+  .handle[data-h="e"].edge::after, .handle[data-h="w"].edge::after { width: 2px; height: 16px; }
+  .handle[data-h="nw"], .handle[data-h="se"] { cursor: nwse-resize; }
+  .handle[data-h="ne"], .handle[data-h="sw"] { cursor: nesw-resize; }
+
+  .handle[data-h="n"]  { left: 50%; top: 0%; }
+  .handle[data-h="s"]  { left: 50%; top: 100%; }
+  .handle[data-h="e"]  { left: 100%; top: 50%; }
+  .handle[data-h="w"]  { left: 0%; top: 50%; }
+  .handle[data-h="nw"] { left: 0%; top: 0%; }
+  .handle[data-h="ne"] { left: 100%; top: 0%; }
+  .handle[data-h="sw"] { left: 0%; top: 100%; }
+  .handle[data-h="se"] { left: 100%; top: 100%; }
+
+  /* ---------- panel ---------- */
+  .panel {
+    width: 296px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-left: 1px solid var(--border-soft);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    overflow-y: auto;
+  }
+
+  .panel-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .panel-section + .panel-section {
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .label {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .file-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .file-meta .name {
+    font-size: 0.85rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-meta .dims {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pill-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .pill {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: var(--radius);
+    padding: 0.4rem 0.65rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+  }
+
+  .pill:hover { border-color: var(--text-faint); color: var(--text); }
+
+  .pill.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-2);
+  }
+
+  .rotate-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .icon-btn {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: var(--radius);
+    width: 2.3rem;
+    height: 2.3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .icon-btn:hover { border-color: var(--text-faint); color: var(--text); }
+
+  .zoom-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+  }
+
+  input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline-offset: 4px;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--accent);
+    cursor: pointer;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--accent);
+    cursor: pointer;
+    border: none;
+  }
+
+  .zoom-value {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    width: 3.2em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .selection-readout {
+    font-family: var(--mono);
+    font-size: 1.05rem;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+
+  .selection-readout span { color: var(--text-faint); font-size: 0.85rem; }
+
+  .actions {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .btn {
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    text-align: center;
+    border: 1px solid transparent;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #1a0d08;
+  }
+  .btn-primary:hover { background: #ff6547; }
+  .btn-primary:disabled {
+    background: var(--surface-3);
+    color: var(--text-faint);
+    cursor: not-allowed;
+  }
+
+  .btn-ghost {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--text-dim);
+  }
+  .btn-ghost:hover { border-color: var(--text-faint); color: var(--text); }
+
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  @media (max-width: 880px) {
+    .app-main { flex-direction: column; }
+    .panel {
+      width: 100%;
+      border-left: none;
+      border-top: 1px solid var(--border-soft);
+      padding: 1.25rem;
+    }
+    .stage { padding: 1rem; min-height: 44vh; }
+    .app-header { padding: 0.85rem 1rem; }
+    .wordmark .tagline { display: none; }
+    .header-meta { display: none; }
+    .actions {
+      position: sticky;
+      bottom: 0;
+      margin: 0.5rem -1.25rem -1.25rem;
+      padding: 0.85rem 1.25rem calc(0.85rem + env(safe-area-inset-bottom));
+      background: var(--surface);
+      border-top: 1px solid var(--border-soft);
+    }
+  }
+
+  /* touch devices: enlarge drag handles and tap targets past mouse-precision sizes */
+  @media (pointer: coarse) {
+    .handle { width: 26px; height: 26px; }
+    .handle[data-h="n"], .handle[data-h="s"] { width: 44px; height: 26px; }
+    .handle[data-h="e"], .handle[data-h="w"] { width: 26px; height: 44px; }
+    .icon-btn { width: 2.75rem; height: 2.75rem; }
+    .pill { padding: 0.55rem 0.85rem; font-size: 0.82rem; }
+    .dropzone { padding: 2.5rem 1.5rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .crop-box .ants rect { animation: none; }
+  }
+</style>
+
+<div class="app">
+  <header class="app-header">
+    <div class="wordmark">
+      <span class="dot" aria-hidden="true"></span>
+      <h1>Safelight</h1>
+      <span class="tagline">ブラウザだけで、精密にトリミング。</span>
+    </div>
+    <div class="header-meta">ファイル・Canvas・クリップボード API</div>
+  </header>
+
+  <main class="app-main">
+    <div class="stage" id="stage">
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="画像をアップロード">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p><strong>画像をドロップ</strong>、またはクリックして選択</p>
+        <p>クリップボードからの貼り付けにも対応しています</p>
+        <div class="hint">JPG · PNG · WEBP · GIF</div>
+      </div>
+
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="viewCanvas"></canvas>
+        <div class="dim" id="dimTop"></div>
+        <div class="dim" id="dimBottom"></div>
+        <div class="dim" id="dimLeft"></div>
+        <div class="dim" id="dimRight"></div>
+        <div class="crop-box" id="cropBox" tabindex="0" aria-label="トリミング範囲。矢印キーで移動できます">
+          <div class="third-lines">
+            <span class="v1"></span><span class="v2"></span>
+            <span class="h1"></span><span class="h2"></span>
+          </div>
+          <svg class="ants"><rect x="0.75" y="0.75" rx="1"></rect></svg>
+          <div class="handle edge" data-h="n"></div>
+          <div class="handle edge" data-h="s"></div>
+          <div class="handle edge" data-h="e"></div>
+          <div class="handle edge" data-h="w"></div>
+          <div class="handle" data-h="nw"></div>
+          <div class="handle" data-h="ne"></div>
+          <div class="handle" data-h="sw"></div>
+          <div class="handle" data-h="se"></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div class="panel-section">
+        <div class="label">画像</div>
+        <div class="file-meta">
+          <div class="name" id="fileName">画像が読み込まれていません</div>
+          <div class="dims" id="fileDims">—</div>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="label">アスペクト比</div>
+        <div class="pill-group" id="aspectGroup">
+          <button class="pill active" data-ratio="0">自由</button>
+          <button class="pill" data-ratio="1">1:1</button>
+          <button class="pill" data-ratio="1.3333">4:3</button>
+          <button class="pill" data-ratio="0.75">3:4</button>
+          <button class="pill" data-ratio="1.7778">16:9</button>
+          <button class="pill" data-ratio="0.5625">9:16</button>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="label">回転</div>
+        <div class="rotate-row">
+          <button class="icon-btn" id="rotateLeft" aria-label="左に回転">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 1 3 6.7" stroke-linecap="round"/><path d="M3 8v5h5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="icon-btn" id="rotateRight" aria-label="右に回転">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 0-3 6.7" stroke-linecap="round"/><path d="M21 8v5h-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="label">ズーム</div>
+        <div class="zoom-row">
+          <input type="range" id="zoomRange" min="50" max="200" value="100" step="1" aria-label="ズーム">
+          <span class="zoom-value" id="zoomValue">100%</span>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="label">選択範囲</div>
+        <div class="selection-readout" id="selectionReadout">— <span>×</span> —</div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" id="downloadBtn" disabled>PNGをダウンロード</button>
+        <button class="btn btn-ghost" id="resetBtn" disabled>別の画像を選ぶ</button>
+      </div>
+    </aside>
+  </main>
+
+  <input type="file" id="fileInput" accept="image/*" class="sr-only" aria-hidden="true" tabindex="-1">
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const stage = document.getElementById("stage");
+  const dropzone = document.getElementById("dropzone");
+  const canvasWrap = document.getElementById("canvasWrap");
+  const viewCanvas = document.getElementById("viewCanvas");
+  const viewCtx = viewCanvas.getContext("2d");
+  const cropBox = document.getElementById("cropBox");
+  const antsRect = cropBox.querySelector(".ants rect");
+  const dimTop = document.getElementById("dimTop");
+  const dimBottom = document.getElementById("dimBottom");
+  const dimLeft = document.getElementById("dimLeft");
+  const dimRight = document.getElementById("dimRight");
+  const fileInput = document.getElementById("fileInput");
+  const fileName = document.getElementById("fileName");
+  const fileDims = document.getElementById("fileDims");
+  const aspectGroup = document.getElementById("aspectGroup");
+  const zoomRange = document.getElementById("zoomRange");
+  const zoomValue = document.getElementById("zoomValue");
+  const selectionReadout = document.getElementById("selectionReadout");
+  const downloadBtn = document.getElementById("downloadBtn");
+  const resetBtn = document.getElementById("resetBtn");
+  const rotateLeft = document.getElementById("rotateLeft");
+  const rotateRight = document.getElementById("rotateRight");
+
+  // Offscreen canvas holding the current full-resolution source pixels
+  // (kept separate from the on-screen canvas so rotation/export stay lossless).
+  const srcCanvas = document.createElement("canvas");
+  const srcCtx = srcCanvas.getContext("2d");
+
+  let srcW = 0, srcH = 0;
+  let scale = 1;      // image px -> displayed css px, includes zoom
+  let baseScale = 1;  // fit-to-stage scale at zoom 100%
+  let zoom = 1;
+  let aspect = 0;     // 0 = free
+  let crop = { x: 0, y: 0, w: 0, h: 0 };
+  let currentFileMeta = null;
+
+  const MIN_CROP = 24;
+
+  function loadImageFromBlob(blob) {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      srcW = img.naturalWidth;
+      srcH = img.naturalHeight;
+      srcCanvas.width = srcW;
+      srcCanvas.height = srcH;
+      srcCtx.clearRect(0, 0, srcW, srcH);
+      srcCtx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+
+      currentFileMeta = {
+        name: blob.name || "pasted-image",
+        size: blob.size || 0
+      };
+      fileName.textContent = currentFileMeta.name;
+
+      dropzone.style.display = "none";
+      canvasWrap.style.display = "block";
+      downloadBtn.disabled = false;
+      resetBtn.disabled = false;
+      zoom = 1;
+      zoomRange.value = 100;
+      zoomValue.textContent = "100%";
+
+      resetCrop();
+      layout();
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      alert("この画像は読み込めませんでした。別のファイルを試してください。");
+    };
+    img.src = url;
+  }
+
+  function resetCrop() {
+    if (aspect > 0) {
+      let w = srcW, h = w / aspect;
+      if (h > srcH) { h = srcH; w = h * aspect; }
+      crop = { x: (srcW - w) / 2, y: (srcH - h) / 2, w, h };
+    } else {
+      crop = { x: 0, y: 0, w: srcW, h: srcH };
+    }
+  }
+
+  function layout() {
+    const availW = stage.clientWidth - 80;
+    const availH = stage.clientHeight - 80;
+    baseScale = Math.min(availW / srcW, availH / srcH, 2);
+    if (!isFinite(baseScale) || baseScale <= 0) baseScale = 1;
+    scale = baseScale * zoom;
+
+    viewCanvas.width = srcW;
+    viewCanvas.height = srcH;
+    viewCtx.drawImage(srcCanvas, 0, 0);
+
+    canvasWrap.style.width = (srcW * scale) + "px";
+    canvasWrap.style.height = (srcH * scale) + "px";
+
+    render();
+  }
+
+  function clampCrop() {
+    crop.w = Math.max(MIN_CROP, Math.min(crop.w, srcW));
+    crop.h = Math.max(MIN_CROP, Math.min(crop.h, srcH));
+    crop.x = Math.max(0, Math.min(crop.x, srcW - crop.w));
+    crop.y = Math.max(0, Math.min(crop.y, srcH - crop.h));
+  }
+
+  function render() {
+    clampCrop();
+    const x = crop.x * scale, y = crop.y * scale;
+    const w = crop.w * scale, h = crop.h * scale;
+
+    cropBox.style.left = x + "px";
+    cropBox.style.top = y + "px";
+    cropBox.style.width = w + "px";
+    cropBox.style.height = h + "px";
+
+    antsRect.setAttribute("width", Math.max(0, w - 1.5));
+    antsRect.setAttribute("height", Math.max(0, h - 1.5));
+
+    const wrapW = srcW * scale, wrapH = srcH * scale;
+    dimTop.style.cssText = `left:0;top:0;width:${wrapW}px;height:${y}px;`;
+    dimBottom.style.cssText = `left:0;top:${y + h}px;width:${wrapW}px;height:${Math.max(0, wrapH - y - h)}px;`;
+    dimLeft.style.cssText = `left:0;top:${y}px;width:${x}px;height:${h}px;`;
+    dimRight.style.cssText = `left:${x + w}px;top:${y}px;width:${Math.max(0, wrapW - x - w)}px;height:${h}px;`;
+
+    fileDims.textContent = `${srcW} × ${srcH} px` + (currentFileMeta ? `  ·  ${formatBytes(currentFileMeta.size)}` : "");
+    selectionReadout.innerHTML = `${Math.round(crop.w)} <span>×</span> ${Math.round(crop.h)} px`;
+  }
+
+  function formatBytes(bytes) {
+    if (!bytes) return "";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  // ---------- drag / resize ----------
+  let drag = null;
+
+  function toImagePt(clientX, clientY) {
+    const r = canvasWrap.getBoundingClientRect();
+    return { x: (clientX - r.left) / scale, y: (clientY - r.top) / scale };
+  }
+
+  function startDrag(mode, e) {
+    e.preventDefault();
+    const p = toImagePt(e.clientX, e.clientY);
+    drag = { mode, startP: p, startCrop: { ...crop } };
+    (e.target).setPointerCapture && e.target.setPointerCapture(e.pointerId);
+  }
+
+  cropBox.addEventListener("pointerdown", (e) => {
+    if (e.target.classList.contains("handle")) return;
+    startDrag("move", e);
+  });
+
+  cropBox.querySelectorAll(".handle").forEach((h) => {
+    h.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      startDrag(h.dataset.h, e);
+    });
+  });
+
+  window.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const p = toImagePt(e.clientX, e.clientY);
+    const dx = p.x - drag.startP.x;
+    const dy = p.y - drag.startP.y;
+    const sc = drag.startCrop;
+    let next = { ...sc };
+
+    if (drag.mode === "move") {
+      next.x = sc.x + dx;
+      next.y = sc.y + dy;
+    } else {
+      if (drag.mode.includes("e")) next.w = sc.w + dx;
+      if (drag.mode.includes("s")) next.h = sc.h + dy;
+      if (drag.mode.includes("w")) { next.x = sc.x + dx; next.w = sc.w - dx; }
+      if (drag.mode.includes("n")) { next.y = sc.y + dy; next.h = sc.h - dy; }
+
+      if (aspect > 0 && drag.mode !== "move") {
+        if (drag.mode === "n" || drag.mode === "s") {
+          next.w = next.h * aspect;
+          next.x = sc.x + (sc.w - next.w) / 2;
+        } else if (drag.mode === "e" || drag.mode === "w") {
+          next.h = next.w / aspect;
+          next.y = sc.y + (sc.h - next.h) / 2;
+        } else {
+          next.h = next.w / aspect;
+          if (drag.mode.includes("n")) next.y = sc.y + sc.h - next.h;
+        }
+      }
+    }
+
+    if (next.w < MIN_CROP) {
+      if (drag.mode.includes("w")) next.x = sc.x + sc.w - MIN_CROP;
+      next.w = MIN_CROP;
+    }
+    if (next.h < MIN_CROP) {
+      if (drag.mode.includes("n")) next.y = sc.y + sc.h - MIN_CROP;
+      next.h = MIN_CROP;
+    }
+    next.x = Math.max(0, Math.min(next.x, srcW - next.w));
+    next.y = Math.max(0, Math.min(next.y, srcH - next.h));
+    if (next.x + next.w > srcW) next.w = srcW - next.x;
+    if (next.y + next.h > srcH) next.h = srcH - next.y;
+
+    crop = next;
+    render();
+  });
+
+  window.addEventListener("pointerup", () => { drag = null; });
+
+  // keyboard nudge on the crop box
+  cropBox.addEventListener("keydown", (e) => {
+    const step = e.shiftKey ? 10 : 1;
+    let handled = true;
+    if (e.key === "ArrowUp") crop.y -= step;
+    else if (e.key === "ArrowDown") crop.y += step;
+    else if (e.key === "ArrowLeft") crop.x -= step;
+    else if (e.key === "ArrowRight") crop.x += step;
+    else handled = false;
+    if (handled) { e.preventDefault(); render(); }
+  });
+
+  // ---------- aspect presets ----------
+  aspectGroup.addEventListener("click", (e) => {
+    const btn = e.target.closest(".pill");
+    if (!btn) return;
+    aspectGroup.querySelectorAll(".pill").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    aspect = parseFloat(btn.dataset.ratio) || 0;
+    if (aspect > 0) {
+      let w = crop.w, h = w / aspect;
+      if (h > srcH) { h = srcH; w = h * aspect; }
+      if (w > srcW) { w = srcW; h = w / aspect; }
+      crop.w = w; crop.h = h;
+    }
+    render();
+  });
+
+  // ---------- zoom ----------
+  zoomRange.addEventListener("input", () => {
+    zoom = zoomRange.value / 100;
+    zoomValue.textContent = zoomRange.value + "%";
+    scale = baseScale * zoom;
+    canvasWrap.style.width = (srcW * scale) + "px";
+    canvasWrap.style.height = (srcH * scale) + "px";
+    render();
+  });
+
+  // ---------- rotate ----------
+  function rotate(deg) {
+    const rotated = document.createElement("canvas");
+    rotated.width = srcH;
+    rotated.height = srcW;
+    const rctx = rotated.getContext("2d");
+    rctx.translate(rotated.width / 2, rotated.height / 2);
+    rctx.rotate((deg * Math.PI) / 180);
+    rctx.drawImage(srcCanvas, -srcW / 2, -srcH / 2);
+
+    srcW = rotated.width;
+    srcH = rotated.height;
+    srcCanvas.width = srcW;
+    srcCanvas.height = srcH;
+    srcCtx.clearRect(0, 0, srcW, srcH);
+    srcCtx.drawImage(rotated, 0, 0);
+
+    resetCrop();
+    layout();
+  }
+  rotateLeft.addEventListener("click", () => rotate(-90));
+  rotateRight.addEventListener("click", () => rotate(90));
+
+  // ---------- download ----------
+  downloadBtn.addEventListener("click", () => {
+    const ew = Math.max(1, Math.round(crop.w));
+    const eh = Math.max(1, Math.round(crop.h));
+    const out = document.createElement("canvas");
+    out.width = ew; out.height = eh;
+    out.getContext("2d").drawImage(srcCanvas, crop.x, crop.y, crop.w, crop.h, 0, 0, ew, eh);
+    out.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const base = (currentFileMeta && currentFileMeta.name.replace(/\.[^.]+$/, "")) || "image";
+      a.download = `${base}-crop.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, "image/png");
+  });
+
+  // ---------- reset ----------
+  resetBtn.addEventListener("click", () => {
+    canvasWrap.style.display = "none";
+    dropzone.style.display = "block";
+    downloadBtn.disabled = true;
+    resetBtn.disabled = true;
+    fileName.textContent = "画像が読み込まれていません";
+    fileDims.textContent = "—";
+    selectionReadout.innerHTML = "— <span>×</span> —";
+    fileInput.value = "";
+    currentFileMeta = null;
+  });
+
+  // ---------- input sources: click / drag&drop / paste ----------
+  dropzone.addEventListener("click", () => fileInput.click());
+  dropzone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+  });
+
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files && fileInput.files[0]) loadImageFromBlob(fileInput.files[0]);
+  });
+
+  ["dragenter", "dragover"].forEach((evt) =>
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropzone.classList.add("drag-over");
+    })
+  );
+  ["dragleave", "drop"].forEach((evt) =>
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("drag-over");
+    })
+  );
+  dropzone.addEventListener("drop", (e) => {
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f && f.type.startsWith("image/")) loadImageFromBlob(f);
+  });
+
+  window.addEventListener("paste", (e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        const blob = item.getAsFile();
+        if (blob) loadImageFromBlob(blob);
+        break;
+      }
+    }
+  });
+
+  // ---------- responsive re-layout ----------
+  const ro = new ResizeObserver(() => {
+    if (srcW && canvasWrap.style.display !== "none") layout();
+  });
+  ro.observe(stage);
+})();
+</script>
