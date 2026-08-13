@@ -1239,6 +1239,27 @@
     ctx.drawImage(source, (w - dw) / 2, (h - dh) / 2, dw, dh);
   }
 
+  // blurs `source` into a w×h box. Blurring a small offscreen copy and stretching it
+  // up keeps the effect strong and fast no matter how high-resolution the source is
+  // (a blur radius that's a few % of a 4000px photo barely reads as blur once seen
+  // at preview size, but the same radius on a small canvas reads as strongly soft).
+  function drawBlurredBackground(ctx, source, w, h, strengthPct) {
+    const small = document.createElement("canvas");
+    const maxDim = 480;
+    const longSide = Math.max(w, h) || 1;
+    const smallScale = maxDim / longSide;
+    small.width = Math.max(1, Math.round(w * smallScale));
+    small.height = Math.max(1, Math.round(h * smallScale));
+    const sctx = small.getContext("2d");
+    drawCover(sctx, source, small.width, small.height, 1.3);
+
+    const blurPx = Math.max(2, Math.round((strengthPct / 100) * maxDim * 0.12));
+    ctx.save();
+    ctx.filter = `blur(${blurPx}px) brightness(0.82)`;
+    ctx.drawImage(small, 0, 0, small.width, small.height, 0, 0, w, h);
+    ctx.restore();
+  }
+
   // resets the image to fill the frame at native scale, centered
   function resetFitTransform() {
     if (!srcW) { imgScale = 1; centerX = 0; centerY = 0; return; }
@@ -1261,12 +1282,7 @@
     fitCtx.clearRect(0, 0, fitTargetW, fitTargetH);
 
     if (fillType === "blur") {
-      // slightly oversized + darkened so the blur doesn't fade to the canvas edge
-      const blurPx = Math.max(1, Math.round((blurRange.value / 100) * Math.max(srcW, srcH) * 0.04));
-      fitCtx.save();
-      fitCtx.filter = `blur(${blurPx}px) brightness(0.82)`;
-      drawCover(fitCtx, srcCanvas, fitTargetW, fitTargetH, 1.2);
-      fitCtx.restore();
+      drawBlurredBackground(fitCtx, srcCanvas, fitTargetW, fitTargetH, blurRange.value);
     } else if (fillType === "image" && bgImg) {
       drawCover(fitCtx, bgImg, fitTargetW, fitTargetH, 1);
     } else {
