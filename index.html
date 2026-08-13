@@ -468,6 +468,119 @@
     white-space: nowrap;
   }
 
+  /* ---------- mode switcher ---------- */
+  .mode-tabs {
+    display: flex;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 3px;
+    gap: 3px;
+  }
+
+  .mode-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-radius: 2px;
+    color: var(--text-dim);
+    padding: 0.55rem 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: inherit;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+  }
+
+  .mode-tab:hover:not(.active) { color: var(--text); }
+
+  .mode-tab.active {
+    background: var(--accent-soft);
+    color: var(--accent-2);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+
+  /* ---------- fit-to-ratio controls ---------- */
+  .fill-sub {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .swatch-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .swatch {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .swatch:hover { border-color: var(--text-faint); }
+
+  .swatch.selected {
+    box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--accent-2);
+  }
+
+  input[type="color"] {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1.5px solid var(--border);
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  input[type="color"]::-webkit-color-swatch { border: none; border-radius: 50%; }
+  input[type="color"]::-moz-color-swatch { border: none; border-radius: 50%; }
+
+  .bg-picker {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 64px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius);
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    cursor: pointer;
+    overflow: hidden;
+  }
+
+  .bg-picker:hover { border-color: var(--accent); color: var(--text); }
+
+  .bg-picker img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+
+  .btn-small {
+    padding: 0.45rem 0.7rem;
+    font-size: 0.75rem;
+    align-self: flex-start;
+    display: none;
+  }
+
+  .pad-note {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--text-faint);
+  }
+
   @media (max-width: 880px) {
     .app-main { flex-direction: column; }
     .panel {
@@ -498,6 +611,9 @@
     .icon-btn { width: 2.75rem; height: 2.75rem; }
     .pill { padding: 0.55rem 0.85rem; font-size: 0.82rem; }
     .dropzone { padding: 2.5rem 1.5rem; }
+    .swatch { width: 32px; height: 32px; }
+    input[type="color"] { width: 34px; height: 34px; }
+    .bg-picker { height: 76px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -549,26 +665,23 @@
           <div class="handle" data-h="se"></div>
         </div>
       </div>
+
+      <div class="canvas-wrap" id="fitWrap" style="display:none;">
+        <canvas id="fitCanvas"></canvas>
+      </div>
     </div>
 
     <aside class="panel">
+      <div class="mode-tabs" id="modeTabs">
+        <button class="mode-tab active" data-mode="crop">トリミング</button>
+        <button class="mode-tab" data-mode="fit">比率に合わせる</button>
+      </div>
+
       <div class="panel-section">
         <div class="label">画像</div>
         <div class="file-meta">
           <div class="name" id="fileName">画像が読み込まれていません</div>
           <div class="dims" id="fileDims">—</div>
-        </div>
-      </div>
-
-      <div class="panel-section">
-        <div class="label">アスペクト比</div>
-        <div class="pill-group" id="aspectGroup">
-          <button class="pill active" data-ratio="0">自由</button>
-          <button class="pill" data-ratio="1">1:1</button>
-          <button class="pill" data-ratio="1.3333">4:3</button>
-          <button class="pill" data-ratio="0.75">3:4</button>
-          <button class="pill" data-ratio="1.7778">16:9</button>
-          <button class="pill" data-ratio="0.5625">9:16</button>
         </div>
       </div>
 
@@ -584,17 +697,92 @@
         </div>
       </div>
 
-      <div class="panel-section">
-        <div class="label">ズーム</div>
-        <div class="zoom-row">
-          <input type="range" id="zoomRange" min="50" max="200" value="100" step="1" aria-label="ズーム">
-          <span class="zoom-value" id="zoomValue">100%</span>
+      <div class="panel-section" id="cropPanel">
+        <div class="panel-section">
+          <div class="label">アスペクト比</div>
+          <div class="pill-group" id="aspectGroup">
+            <button class="pill active" data-ratio="0">自由</button>
+            <button class="pill" data-ratio="1">1:1</button>
+            <button class="pill" data-ratio="1.3333">4:3</button>
+            <button class="pill" data-ratio="0.75">3:4</button>
+            <button class="pill" data-ratio="1.7778">16:9</button>
+            <button class="pill" data-ratio="0.5625">9:16</button>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="label">ズーム</div>
+          <div class="zoom-row">
+            <input type="range" id="zoomRange" min="50" max="200" value="100" step="1" aria-label="ズーム">
+            <span class="zoom-value" id="zoomValue">100%</span>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="label">選択範囲</div>
+          <div class="selection-readout" id="selectionReadout">— <span>×</span> —</div>
         </div>
       </div>
 
-      <div class="panel-section">
-        <div class="label">選択範囲</div>
-        <div class="selection-readout" id="selectionReadout">— <span>×</span> —</div>
+      <div class="panel-section" id="fitPanel" style="display:none;">
+        <div class="panel-section">
+          <div class="label">目標の比率</div>
+          <div class="pill-group" id="fitAspectGroup">
+            <button class="pill active" data-ratio="1">1:1</button>
+            <button class="pill" data-ratio="1.3333">4:3</button>
+            <button class="pill" data-ratio="0.75">3:4</button>
+            <button class="pill" data-ratio="1.7778">16:9</button>
+            <button class="pill" data-ratio="0.5625">9:16</button>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="label">余白の埋め方</div>
+          <div class="pill-group" id="fillTypeGroup">
+            <button class="pill active" data-fill="color">単色</button>
+            <button class="pill" data-fill="blur">ぼかし背景</button>
+            <button class="pill" data-fill="image">別の画像</button>
+          </div>
+
+          <div class="fill-sub" id="fillColorControls">
+            <div class="swatch-row">
+              <button class="swatch selected" data-color="#ffffff" style="background:#ffffff" aria-label="白"></button>
+              <button class="swatch" data-color="#14100f" style="background:#14100f" aria-label="黒"></button>
+              <button class="swatch" data-color="#f2e9e0" style="background:#f2e9e0" aria-label="生成り"></button>
+              <button class="swatch" data-color="#ff4d2e" style="background:#ff4d2e" aria-label="レッド"></button>
+              <input type="color" id="padColor" value="#ffffff" aria-label="カスタムカラー">
+            </div>
+          </div>
+
+          <div class="fill-sub" id="fillBlurControls" style="display:none;">
+            <div class="zoom-row">
+              <input type="range" id="blurRange" min="0" max="100" value="50" step="1" aria-label="ぼかしの強さ">
+              <span class="zoom-value" id="blurValue">50%</span>
+            </div>
+          </div>
+
+          <div class="fill-sub" id="fillImageControls" style="display:none;">
+            <div class="bg-picker" id="bgPicker" tabindex="0" role="button" aria-label="背景画像を選ぶ">
+              <img id="bgThumb" alt="">
+              <span id="bgPickerLabel">背景画像を選ぶ</span>
+            </div>
+            <button class="btn btn-ghost btn-small" id="bgRemoveBtn">削除</button>
+          </div>
+        </div>
+
+        <div class="panel-section" id="posSection">
+          <div class="label" id="posLabel">上下位置</div>
+          <div class="zoom-row">
+            <input type="range" id="posRange" min="0" max="100" value="50" step="1" aria-label="画像の位置">
+            <span class="zoom-value" id="posValue">50%</span>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="label">出力サイズ</div>
+          <div class="selection-readout" id="fitDimsReadout">— <span>×</span> —</div>
+          <div class="pad-note" id="fitPadNote"></div>
+        </div>
       </div>
 
       <div class="actions">
@@ -605,6 +793,7 @@
   </main>
 
   <input type="file" id="fileInput" accept="image/*" class="sr-only" aria-hidden="true" tabindex="-1">
+  <input type="file" id="bgFileInput" accept="image/*" class="sr-only" aria-hidden="true" tabindex="-1">
 </div>
 
 <script>
@@ -634,6 +823,32 @@
   const rotateLeft = document.getElementById("rotateLeft");
   const rotateRight = document.getElementById("rotateRight");
 
+  const modeTabs = document.getElementById("modeTabs");
+  const cropPanel = document.getElementById("cropPanel");
+  const fitPanel = document.getElementById("fitPanel");
+  const fitWrap = document.getElementById("fitWrap");
+  const fitCanvas = document.getElementById("fitCanvas");
+  const fitAspectGroup = document.getElementById("fitAspectGroup");
+  const fillTypeGroup = document.getElementById("fillTypeGroup");
+  const fillColorControls = document.getElementById("fillColorControls");
+  const fillBlurControls = document.getElementById("fillBlurControls");
+  const fillImageControls = document.getElementById("fillImageControls");
+  const padColorInput = document.getElementById("padColor");
+  const swatches = document.querySelectorAll("#fillColorControls .swatch");
+  const blurRange = document.getElementById("blurRange");
+  const blurValue = document.getElementById("blurValue");
+  const bgPicker = document.getElementById("bgPicker");
+  const bgFileInput = document.getElementById("bgFileInput");
+  const bgThumb = document.getElementById("bgThumb");
+  const bgPickerLabel = document.getElementById("bgPickerLabel");
+  const bgRemoveBtn = document.getElementById("bgRemoveBtn");
+  const posSection = document.getElementById("posSection");
+  const posLabel = document.getElementById("posLabel");
+  const posRange = document.getElementById("posRange");
+  const posValue = document.getElementById("posValue");
+  const fitDimsReadout = document.getElementById("fitDimsReadout");
+  const fitPadNote = document.getElementById("fitPadNote");
+
   // Offscreen canvas holding the current full-resolution source pixels
   // (kept separate from the on-screen canvas so rotation/export stay lossless).
   const srcCanvas = document.createElement("canvas");
@@ -646,6 +861,12 @@
   let aspect = 0;     // 0 = free
   let crop = { x: 0, y: 0, w: 0, h: 0 };
   let currentFileMeta = null;
+
+  let appMode = "crop";   // "crop" | "fit"
+  let fitAspect = 1;      // target ratio for fit-to-ratio mode
+  let fillType = "color"; // "color" | "blur" | "image"
+  let bgImg = null;
+  let bgObjectUrl = null;
 
   const MIN_CROP = 24;
 
@@ -667,16 +888,16 @@
       };
       fileName.textContent = currentFileMeta.name;
 
-      dropzone.style.display = "none";
-      canvasWrap.style.display = "block";
       downloadBtn.disabled = false;
       resetBtn.disabled = false;
       zoom = 1;
       zoomRange.value = 100;
       zoomValue.textContent = "100%";
+      posRange.value = 50;
+      posValue.textContent = "50%";
 
       resetCrop();
-      layout();
+      applyAppMode();
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
@@ -748,6 +969,31 @@
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + " KB";
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   }
+
+  // ---------- mode switcher (crop / fit-to-ratio) ----------
+  function applyAppMode() {
+    modeTabs.querySelectorAll(".mode-tab").forEach((b) => {
+      b.classList.toggle("active", b.dataset.mode === appMode);
+    });
+    cropPanel.style.display = appMode === "crop" ? "flex" : "none";
+    fitPanel.style.display = appMode === "fit" ? "flex" : "none";
+
+    const hasImage = !!srcW;
+    dropzone.style.display = hasImage ? "none" : "block";
+    canvasWrap.style.display = hasImage && appMode === "crop" ? "block" : "none";
+    fitWrap.style.display = hasImage && appMode === "fit" ? "block" : "none";
+
+    if (hasImage) {
+      if (appMode === "crop") layout(); else renderFit();
+    }
+  }
+
+  modeTabs.addEventListener("click", (e) => {
+    const btn = e.target.closest(".mode-tab");
+    if (!btn || btn.dataset.mode === appMode) return;
+    appMode = btn.dataset.mode;
+    applyAppMode();
+  });
 
   // ---------- drag / resize ----------
   let drag = null;
@@ -882,24 +1128,29 @@
     srcCtx.drawImage(rotated, 0, 0);
 
     resetCrop();
-    layout();
+    applyAppMode();
   }
   rotateLeft.addEventListener("click", () => rotate(-90));
   rotateRight.addEventListener("click", () => rotate(90));
 
   // ---------- download ----------
   downloadBtn.addEventListener("click", () => {
-    const ew = Math.max(1, Math.round(crop.w));
-    const eh = Math.max(1, Math.round(crop.h));
-    const out = document.createElement("canvas");
-    out.width = ew; out.height = eh;
-    out.getContext("2d").drawImage(srcCanvas, crop.x, crop.y, crop.w, crop.h, 0, 0, ew, eh);
+    const base = (currentFileMeta && currentFileMeta.name.replace(/\.[^.]+$/, "")) || "image";
+    let out;
+    if (appMode === "crop") {
+      const ew = Math.max(1, Math.round(crop.w));
+      const eh = Math.max(1, Math.round(crop.h));
+      out = document.createElement("canvas");
+      out.width = ew; out.height = eh;
+      out.getContext("2d").drawImage(srcCanvas, crop.x, crop.y, crop.w, crop.h, 0, 0, ew, eh);
+    } else {
+      out = fitCanvas;
+    }
     out.toBlob((blob) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const base = (currentFileMeta && currentFileMeta.name.replace(/\.[^.]+$/, "")) || "image";
-      a.download = `${base}-crop.png`;
+      a.download = appMode === "crop" ? `${base}-crop.png` : `${base}-fit.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -909,15 +1160,17 @@
 
   // ---------- reset ----------
   resetBtn.addEventListener("click", () => {
-    canvasWrap.style.display = "none";
-    dropzone.style.display = "block";
+    srcW = 0; srcH = 0;
     downloadBtn.disabled = true;
     resetBtn.disabled = true;
     fileName.textContent = "画像が読み込まれていません";
     fileDims.textContent = "—";
     selectionReadout.innerHTML = "— <span>×</span> —";
+    fitDimsReadout.textContent = "— × —";
+    fitPadNote.textContent = "";
     fileInput.value = "";
     currentFileMeta = null;
+    applyAppMode();
   });
 
   // ---------- input sources: click / drag&drop / paste ----------
@@ -959,10 +1212,174 @@
     }
   });
 
+  // ---------- fit-to-ratio mode ----------
+  // Fits the whole image inside a canvas of the chosen ratio (no cropping);
+  // the axis that doesn't match becomes padding, filled with a color,
+  // a blurred copy of the image itself, or a separate background image.
+  const fitCtx = fitCanvas.getContext("2d");
+
+  function computeFitTarget() {
+    let targetW, targetH;
+    if (srcW / srcH > fitAspect) {
+      targetW = srcW;
+      targetH = Math.round(srcW / fitAspect);
+    } else {
+      targetH = srcH;
+      targetW = Math.round(srcH * fitAspect);
+    }
+    return { targetW, targetH };
+  }
+
+  // draws `source` covering a w×h box, centered and cropped (like CSS object-fit: cover)
+  function drawCover(ctx, source, w, h, extra) {
+    const sw = source.naturalWidth || source.width;
+    const sh = source.naturalHeight || source.height;
+    const s = Math.max(w / sw, h / sh) * (extra || 1);
+    const dw = sw * s, dh = sh * s;
+    ctx.drawImage(source, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  }
+
+  function renderFit() {
+    const { targetW, targetH } = computeFitTarget();
+    fitCanvas.width = targetW;
+    fitCanvas.height = targetH;
+    fitCtx.clearRect(0, 0, targetW, targetH);
+
+    if (fillType === "blur") {
+      // slightly oversized + darkened so the blur doesn't fade to the canvas edge
+      const blurPx = Math.max(1, Math.round((blurRange.value / 100) * Math.max(srcW, srcH) * 0.04));
+      fitCtx.save();
+      fitCtx.filter = `blur(${blurPx}px) brightness(0.82)`;
+      drawCover(fitCtx, srcCanvas, targetW, targetH, 1.2);
+      fitCtx.restore();
+    } else if (fillType === "image" && bgImg) {
+      drawCover(fitCtx, bgImg, targetW, targetH, 1);
+    } else {
+      fitCtx.fillStyle = fillType === "image" ? "#3d312b" : padColorInput.value;
+      fitCtx.fillRect(0, 0, targetW, targetH);
+    }
+
+    let x = 0, y = 0;
+    const orientation = targetW === srcW ? (targetH === srcH ? "none" : "v") : "h";
+    if (orientation === "v") {
+      y = (posRange.value / 100) * (targetH - srcH);
+    } else if (orientation === "h") {
+      x = (posRange.value / 100) * (targetW - srcW);
+    }
+    fitCtx.drawImage(srcCanvas, x, y, srcW, srcH);
+
+    const availW = stage.clientWidth - 80;
+    const availH = stage.clientHeight - 80;
+    const s = Math.min(availW / targetW, availH / targetH, 2);
+    fitWrap.style.width = (targetW * s) + "px";
+    fitWrap.style.height = (targetH * s) + "px";
+
+    fitDimsReadout.textContent = `${targetW} × ${targetH} px`;
+    if (orientation === "none") {
+      fitPadNote.textContent = "この比率では余白は発生しません";
+    } else if (orientation === "v") {
+      fitPadNote.textContent = `余白: 上下 ${targetH - srcH}px`;
+    } else {
+      fitPadNote.textContent = `余白: 左右 ${targetW - srcW}px`;
+    }
+    posSection.style.display = orientation === "none" ? "none" : "flex";
+    posLabel.textContent = orientation === "v" ? "上下位置" : "左右位置";
+  }
+
+  fitAspectGroup.addEventListener("click", (e) => {
+    const btn = e.target.closest(".pill");
+    if (!btn) return;
+    fitAspectGroup.querySelectorAll(".pill").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    fitAspect = parseFloat(btn.dataset.ratio) || 1;
+    if (srcW) renderFit();
+  });
+
+  fillTypeGroup.addEventListener("click", (e) => {
+    const btn = e.target.closest(".pill");
+    if (!btn) return;
+    fillTypeGroup.querySelectorAll(".pill").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    fillType = btn.dataset.fill;
+    fillColorControls.style.display = fillType === "color" ? "flex" : "none";
+    fillBlurControls.style.display = fillType === "blur" ? "flex" : "none";
+    fillImageControls.style.display = fillType === "image" ? "flex" : "none";
+    if (srcW) renderFit();
+  });
+
+  swatches.forEach((sw) => {
+    sw.addEventListener("click", () => {
+      padColorInput.value = sw.dataset.color;
+      swatches.forEach((s) => s.classList.remove("selected"));
+      sw.classList.add("selected");
+      if (srcW) renderFit();
+    });
+  });
+
+  padColorInput.addEventListener("input", () => {
+    swatches.forEach((s) => {
+      s.classList.toggle("selected", s.dataset.color.toLowerCase() === padColorInput.value.toLowerCase());
+    });
+    if (srcW) renderFit();
+  });
+
+  blurRange.addEventListener("input", () => {
+    blurValue.textContent = blurRange.value + "%";
+    if (srcW) renderFit();
+  });
+
+  posRange.addEventListener("input", () => {
+    posValue.textContent = posRange.value + "%";
+    if (srcW) renderFit();
+  });
+
+  function loadBgImage(blob) {
+    if (bgObjectUrl) URL.revokeObjectURL(bgObjectUrl);
+    bgObjectUrl = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      bgImg = img;
+      bgThumb.src = bgObjectUrl;
+      bgThumb.style.display = "block";
+      bgPickerLabel.style.display = "none";
+      bgRemoveBtn.style.display = "inline-block";
+      if (srcW) renderFit();
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(bgObjectUrl);
+      bgObjectUrl = null;
+      alert("この画像は背景として使用できませんでした。");
+    };
+    img.src = bgObjectUrl;
+  }
+
+  bgPicker.addEventListener("click", () => bgFileInput.click());
+  bgPicker.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); bgFileInput.click(); }
+  });
+  bgFileInput.addEventListener("change", () => {
+    const f = bgFileInput.files && bgFileInput.files[0];
+    if (f) loadBgImage(f);
+  });
+
+  bgRemoveBtn.addEventListener("click", () => {
+    bgImg = null;
+    if (bgObjectUrl) { URL.revokeObjectURL(bgObjectUrl); bgObjectUrl = null; }
+    bgThumb.style.display = "none";
+    bgThumb.removeAttribute("src");
+    bgPickerLabel.style.display = "block";
+    bgRemoveBtn.style.display = "none";
+    bgFileInput.value = "";
+    if (srcW) renderFit();
+  });
+
   // ---------- responsive re-layout ----------
   const ro = new ResizeObserver(() => {
-    if (srcW && canvasWrap.style.display !== "none") layout();
+    if (!srcW) return;
+    if (appMode === "crop") layout(); else renderFit();
   });
   ro.observe(stage);
+
+  applyAppMode();
 })();
 </script>
