@@ -737,6 +737,14 @@
         </div>
 
         <div class="panel-section">
+          <div class="label">ズーム</div>
+          <div class="zoom-row">
+            <input type="range" id="fitZoomRange" min="50" max="200" value="100" step="1" aria-label="ズーム">
+            <span class="zoom-value" id="fitZoomValue">100%</span>
+          </div>
+        </div>
+
+        <div class="panel-section">
           <div class="label">余白の埋め方</div>
           <div class="pill-group" id="fillTypeGroup">
             <button class="pill active" data-fill="color">単色</button>
@@ -829,6 +837,8 @@
   const fitWrap = document.getElementById("fitWrap");
   const fitCanvas = document.getElementById("fitCanvas");
   const fitAspectGroup = document.getElementById("fitAspectGroup");
+  const fitZoomRange = document.getElementById("fitZoomRange");
+  const fitZoomValue = document.getElementById("fitZoomValue");
   const fillTypeGroup = document.getElementById("fillTypeGroup");
   const fillColorControls = document.getElementById("fillColorControls");
   const fillBlurControls = document.getElementById("fillBlurControls");
@@ -867,6 +877,9 @@
   let fillType = "color"; // "color" | "blur" | "image"
   let bgImg = null;
   let bgObjectUrl = null;
+  let fitZoom = 1;                    // manual display zoom for fit mode
+  let fitBaseScale = 1;               // auto fit-to-stage scale at fitZoom 100%
+  let fitTargetW = 0, fitTargetH = 0; // last computed output canvas size
 
   const MIN_CROP = 24;
 
@@ -895,6 +908,9 @@
       zoomValue.textContent = "100%";
       posRange.value = 50;
       posValue.textContent = "50%";
+      fitZoom = 1;
+      fitZoomRange.value = 100;
+      fitZoomValue.textContent = "100%";
 
       resetCrop();
       applyAppMode();
@@ -1240,51 +1256,66 @@
   }
 
   function renderFit() {
-    const { targetW, targetH } = computeFitTarget();
-    fitCanvas.width = targetW;
-    fitCanvas.height = targetH;
-    fitCtx.clearRect(0, 0, targetW, targetH);
+    const t = computeFitTarget();
+    fitTargetW = t.targetW;
+    fitTargetH = t.targetH;
+    fitCanvas.width = fitTargetW;
+    fitCanvas.height = fitTargetH;
+    fitCtx.clearRect(0, 0, fitTargetW, fitTargetH);
 
     if (fillType === "blur") {
       // slightly oversized + darkened so the blur doesn't fade to the canvas edge
       const blurPx = Math.max(1, Math.round((blurRange.value / 100) * Math.max(srcW, srcH) * 0.04));
       fitCtx.save();
       fitCtx.filter = `blur(${blurPx}px) brightness(0.82)`;
-      drawCover(fitCtx, srcCanvas, targetW, targetH, 1.2);
+      drawCover(fitCtx, srcCanvas, fitTargetW, fitTargetH, 1.2);
       fitCtx.restore();
     } else if (fillType === "image" && bgImg) {
-      drawCover(fitCtx, bgImg, targetW, targetH, 1);
+      drawCover(fitCtx, bgImg, fitTargetW, fitTargetH, 1);
     } else {
       fitCtx.fillStyle = fillType === "image" ? "#3d312b" : padColorInput.value;
-      fitCtx.fillRect(0, 0, targetW, targetH);
+      fitCtx.fillRect(0, 0, fitTargetW, fitTargetH);
     }
 
     let x = 0, y = 0;
-    const orientation = targetW === srcW ? (targetH === srcH ? "none" : "v") : "h";
+    const orientation = fitTargetW === srcW ? (fitTargetH === srcH ? "none" : "v") : "h";
     if (orientation === "v") {
-      y = (posRange.value / 100) * (targetH - srcH);
+      y = (posRange.value / 100) * (fitTargetH - srcH);
     } else if (orientation === "h") {
-      x = (posRange.value / 100) * (targetW - srcW);
+      x = (posRange.value / 100) * (fitTargetW - srcW);
     }
     fitCtx.drawImage(srcCanvas, x, y, srcW, srcH);
 
     const availW = stage.clientWidth - 80;
     const availH = stage.clientHeight - 80;
-    const s = Math.min(availW / targetW, availH / targetH, 2);
-    fitWrap.style.width = (targetW * s) + "px";
-    fitWrap.style.height = (targetH * s) + "px";
+    fitBaseScale = Math.min(availW / fitTargetW, availH / fitTargetH, 2);
+    if (!isFinite(fitBaseScale) || fitBaseScale <= 0) fitBaseScale = 1;
+    applyFitZoom();
 
-    fitDimsReadout.textContent = `${targetW} × ${targetH} px`;
+    fitDimsReadout.textContent = `${fitTargetW} × ${fitTargetH} px`;
     if (orientation === "none") {
       fitPadNote.textContent = "この比率では余白は発生しません";
     } else if (orientation === "v") {
-      fitPadNote.textContent = `余白: 上下 ${targetH - srcH}px`;
+      fitPadNote.textContent = `余白: 上下 ${fitTargetH - srcH}px`;
     } else {
-      fitPadNote.textContent = `余白: 左右 ${targetW - srcW}px`;
+      fitPadNote.textContent = `余白: 左右 ${fitTargetW - srcW}px`;
     }
     posSection.style.display = orientation === "none" ? "none" : "flex";
     posLabel.textContent = orientation === "v" ? "上下位置" : "左右位置";
   }
+
+  // updates only the on-screen preview size (not the exported resolution)
+  function applyFitZoom() {
+    const s = fitBaseScale * fitZoom;
+    fitWrap.style.width = (fitTargetW * s) + "px";
+    fitWrap.style.height = (fitTargetH * s) + "px";
+  }
+
+  fitZoomRange.addEventListener("input", () => {
+    fitZoom = fitZoomRange.value / 100;
+    fitZoomValue.textContent = fitZoomRange.value + "%";
+    applyFitZoom();
+  });
 
   fitAspectGroup.addEventListener("click", (e) => {
     const btn = e.target.closest(".pill");
