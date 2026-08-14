@@ -785,7 +785,7 @@
       </div>
 
       <div class="actions">
-        <button class="btn btn-primary" id="downloadBtn" disabled>PNGをダウンロード</button>
+        <button class="btn btn-primary" id="downloadBtn" disabled>画像を保存</button>
         <button class="btn btn-ghost" id="resetBtn" disabled>別の画像を選ぶ</button>
       </div>
     </aside>
@@ -1134,7 +1134,12 @@
   rotateLeft.addEventListener("click", () => rotate(-90));
   rotateRight.addEventListener("click", () => rotate(90));
 
-  // ---------- download ----------
+  // ---------- save / share ----------
+  // iOS Safari ignores the <a download> attribute (it just opens the blob instead
+  // of saving it), so on devices that support the Web Share API with files, route
+  // through the native share sheet instead — it has a direct "Save Image" action.
+  // Desktop / anything without file-sharing support falls back to the classic
+  // download link, which already works fine there.
   downloadBtn.addEventListener("click", () => {
     const base = (currentFileMeta && currentFileMeta.name.replace(/\.[^.]+$/, "")) || "image";
     let out;
@@ -1147,11 +1152,28 @@
     } else {
       out = fitCanvas;
     }
-    out.toBlob((blob) => {
+    const filename = appMode === "crop" ? `${base}-crop.png` : `${base}-fit.png`;
+
+    out.toBlob(async (blob) => {
+      if (!blob) return;
+
+      let file = null;
+      try { file = new File([blob], filename, { type: "image/png" }); } catch (err) { /* File ctor unsupported */ }
+
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file] });
+          return;
+        } catch (err) {
+          if (err && err.name === "AbortError") return; // user cancelled the share sheet
+          // otherwise fall through to the plain download below
+        }
+      }
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = appMode === "crop" ? `${base}-crop.png` : `${base}-fit.png`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
