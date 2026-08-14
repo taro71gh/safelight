@@ -1239,24 +1239,36 @@
     ctx.drawImage(source, (w - dw) / 2, (h - dh) / 2, dw, dh);
   }
 
-  // blurs `source` into a w×h box. Blurring a small offscreen copy and stretching it
-  // up keeps the effect strong and fast no matter how high-resolution the source is
-  // (a blur radius that's a few % of a 4000px photo barely reads as blur once seen
-  // at preview size, but the same radius on a small canvas reads as strongly soft).
+  // blurs `source` into a w×h box by repeatedly downscaling to a fraction of its
+  // size and then stretching the tiny result back up. This doesn't depend on the
+  // canvas `filter` API (blur) at all — it only uses drawImage scaling, which every
+  // browser supports — so it can't silently no-op if `filter` isn't honored.
   function drawBlurredBackground(ctx, source, w, h, strengthPct) {
-    const small = document.createElement("canvas");
-    const maxDim = 480;
-    const longSide = Math.max(w, h) || 1;
-    const smallScale = maxDim / longSide;
-    small.width = Math.max(1, Math.round(w * smallScale));
-    small.height = Math.max(1, Math.round(h * smallScale));
-    const sctx = small.getContext("2d");
-    drawCover(sctx, source, small.width, small.height, 1.3);
+    const strength = Math.max(0, Math.min(100, Number(strengthPct) || 0)) / 100;
+    const minDim = Math.max(6, Math.round(160 - strength * 148)); // 0%→160px soft, 100%→12px very soft
 
-    const blurPx = Math.max(2, Math.round((strengthPct / 100) * maxDim * 0.12));
+    let cur = document.createElement("canvas");
+    cur.width = Math.max(1, Math.round(w));
+    cur.height = Math.max(1, Math.round(h));
+    drawCover(cur.getContext("2d"), source, cur.width, cur.height, 1.3);
+
+    let curW = cur.width, curH = cur.height;
+    while (Math.max(curW, curH) > minDim) {
+      const nw = Math.max(1, Math.round(curW / 2));
+      const nh = Math.max(1, Math.round(curH / 2));
+      const next = document.createElement("canvas");
+      next.width = nw;
+      next.height = nh;
+      next.getContext("2d").drawImage(cur, 0, 0, nw, nh);
+      cur = next;
+      curW = nw;
+      curH = nh;
+    }
+
     ctx.save();
-    ctx.filter = `blur(${blurPx}px) brightness(0.82)`;
-    ctx.drawImage(small, 0, 0, small.width, small.height, 0, 0, w, h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.filter = "brightness(0.82)"; // cosmetic dimming; harmless if unsupported
+    ctx.drawImage(cur, 0, 0, curW, curH, 0, 0, w, h);
     ctx.restore();
   }
 
